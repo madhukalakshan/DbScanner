@@ -21,24 +21,44 @@ public class RunnerTest {
 		String schema;
 		String allTableOrNot = "";
 		String attribute;
+		String DBType;
+		String ip;
+		String port;
+		String DBName;
+		String userNamePassword;
 		ArrayList<String> tableName = new ArrayList<String>();
 		ArrayList<String> attributeList = new ArrayList<String>();
 		Scanner scanner = new Scanner(System.in);
 		long totalColoumnValue = 0;
 
 		DbScanner ver = new DbScanner();
+		
+		commonStps.startPropertyFile();
 
 		String countValue = "";
-		if (config.getDBType().equals("MYSQL") || config.getDBType().equals("ORACLE")) {
+		System.out.println("Please enter DB type(Example:POSTGRE,ORACLE,MYSQL)");
+		DBType = scanner.nextLine();
+		if (DBType.equals("MYSQL") || DBType.equals("ORACLE")) {
 			countValue = "count(*)";
 		} else {
 			countValue = "count";
 		}
+		
+		System.out.println("Please enter DB IP");
+		ip = scanner.nextLine();
+		
+		System.out.println("Please enter DB Port");
+		port = scanner.nextLine();
+		
+		System.out.println("Please enter DB Name");
+		DBName = scanner.nextLine();
+		
+		ver.updateIP(ip, port, DBName);
 
-		System.out.println("Please enter schema name(Example:ISWITCH,BKN,REPORT,IPG,USR,BNK,CARD,ALERT,DEFAULT)");
+		System.out.println("Please enter schema name(Example:"+config.getSchemaName()+")");
 		schema = scanner.nextLine();
 		String[] schemaValue = schema.split(",");
-		String[] constantSchemaValue = { "ISWITCH", "BKN", "REPORT", "IPG", "USR", "BNK", "CARD", "ALERT", "DEFAULT" };
+		String[] constantSchemaValue = config.getSchemaName().split(",");
 		for (String c : schemaValue) {
 			boolean isFound = false;
 			for (String b : constantSchemaValue) {
@@ -52,6 +72,10 @@ public class RunnerTest {
 				System.exit(0);
 			}
 		}
+		
+		System.out.println("Please enter username amd password (Example:username1,password1/username2,password2)");
+		userNamePassword=scanner.nextLine();
+		String[] userPassword = userNamePassword.split("/");
 
 		for (int a = 0; a < schemaValue.length; a++) {
 
@@ -59,8 +83,10 @@ public class RunnerTest {
 				commonStps.resetConstant();
 				totalColoumnValue = 0;
 			}
-
-			ver.createDB(schemaValue[a]);
+			
+			String[] userPass= userPassword[a].split(",");
+			ver.updateUsrPass(userPass[0], userPass[1]);
+			ver.createDB(schemaValue[a],DBType);
 
 			if (schemaValue.length <= 1) {
 				System.out.println("Do you want to scan all tables in schema(Y/N)?");
@@ -72,7 +98,7 @@ public class RunnerTest {
 			}
 
 			if (allTableOrNot.toUpperCase().equals("Y") || schemaValue.length > 1) {
-				tableName = commonStps.getTable(schemaValue[a]);
+				tableName = commonStps.getTable(userPass[0],DBType);
 				if(tableName.isEmpty()){
 					System.out.println("Didn't captured table list from "+commonStps.saveQuery+" query");
 				}
@@ -81,7 +107,7 @@ public class RunnerTest {
 				tableNameElement = scanner.nextLine();
 				String[] sparatedValue = tableNameElement.split(",");
 				for (int i = 0; i < sparatedValue.length; i++) {
-					ArrayList<String> tmpTable = commonStps.getTable(schemaValue[a]);
+					ArrayList<String> tmpTable = commonStps.getTable(userPass[0],DBType);
 					String tmpValue = sparatedValue[i];
 					if (tmpTable.contains(tmpValue)) {
 						if (!config.getRemoveTable().contains(tmpValue)) {
@@ -116,50 +142,63 @@ public class RunnerTest {
 			for (int i = 0; i < tableName.size(); i++) {
 				if (!config.getRemoveTable().contains(tableName.get(i).toLowerCase())) {
 					String Query = "";
-					if (config.getDBType().equals("ORACLE")) {
+					if (DBType.equals("ORACLE")) {
 						Query = "select COLUMN_NAME from ALL_TAB_COLUMNS WHERE table_name = '" + tableName.get(i)
-								+ "'AND owner = '" + ver.getLoginUserName(schemaValue[a]) + "'";
+								+ "'AND owner = '" + userPass[0] + "'";
 					} else {
 						Query = "SELECT column_name FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '"
 								+ tableName.get(i) + "'" + " AND table_schema='"
-								+ commonStps.getSchemaName(schemaValue[a]) + "';";
+								+ schemaValue[a] + "';";
 					}
 
 					String queryLimit = "";
-					ArrayList<String> newValue = ver.getDbValue(schemaValue[a], Query, "column_name");
-
+					ArrayList<String> newValue = ver.getDbValue(schemaValue[a], Query, "column_name",DBType,tableName.get(i));
+					
 					ArrayList<String> countarray = ver.getDbValue(schemaValue[a],
-							"select count(*) from " + tableName.get(i), countValue);
+							"select count(*) from " + tableName.get(i), countValue,DBType,tableName.get(i));
 
 					for (int k = 0; k < newValue.size(); k++) {
-						int count = Integer.parseInt(countarray.get(0));
-						ArrayList<Integer> countSeparateArray = ver.getCount(count);
-						for (int j = 0; j < countSeparateArray.size(); j++) {
-							String constant = "";
-							if (countSeparateArray.size() == 1 || j == 0) {
-								constant = "a";
-								queryLimit = ver.limitQuery(tableName.get(i), newValue.get(k),
-										countSeparateArray.get(0), constant);
-								ver.isValidationValue(schemaValue[a], queryLimit, newValue.get(k), tableName.get(i), 0);
-							} else {
-								constant = "b";
-								queryLimit = ver.limitQuery(tableName.get(i), newValue.get(k),
-										countSeparateArray.get(j - 1), constant);
-								ver.isValidationValue(schemaValue[a], queryLimit, newValue.get(k), tableName.get(i),
-										countSeparateArray.get(j - 1));
-							}
+						try{
+							int count = Integer.parseInt(countarray.get(0));
+							ArrayList<Integer> countSeparateArray = ver.getCount(count);
+							for (int j = 0; j < countSeparateArray.size(); j++) {
+								ver.allColoumnScan=true;
+								String constant = "";
+								if (countSeparateArray.size() == 1 || j == 0) {
+									constant = "a";
+									queryLimit = ver.limitQuery(tableName.get(i), newValue.get(k),
+											countSeparateArray.get(0), constant,DBType );
+									ver.isValidationValue(schemaValue[a], queryLimit, newValue.get(k), tableName.get(i), 0,DBType);
+								} else {
+									constant = "b";
+									queryLimit = ver.limitQuery(tableName.get(i), newValue.get(k),
+											countSeparateArray.get(j - 1), constant,DBType);
+									ver.isValidationValue(schemaValue[a], queryLimit, newValue.get(k), tableName.get(i),
+											countSeparateArray.get(j - 1),DBType);
+								}
 
+							}
+							if (countSeparateArray.size() > 0) {
+								totalColoumnValue++;
+							}
+							if(ver.allColoumnScan){
+								System.out.println("The scan was completed to " + newValue.get(k) + " coloumn in "
+										+ tableName.get(i) + " table");
+							}
+							else
+								System.out.println("The scan was failed to " + newValue.get(k) + " coloumn in "
+										+ tableName.get(i) + " table");
+						}catch(Exception e){
+							System.out.println("The scan was failed to " + newValue.get(k) + " coloumn in "
+									+ tableName.get(i) + " table");
 						}
-						if (countSeparateArray.size() > 0) {
-							totalColoumnValue++;
-						}
-						System.out.println("The scan was completed to " + newValue.get(k) + " coloumn in "
-								+ tableName.get(i) + " table");
+						
 					}
 				}
 
 			}
 
+			ver.updatefailedTableOnly();
 			ver.closeDBConnection();
 
 			if (attributeList.contains("PLAINCARDNUMBER")) {

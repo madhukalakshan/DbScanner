@@ -2,7 +2,10 @@ package com.dbscanner.common;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.Properties;
 
@@ -20,6 +23,8 @@ import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 
+import org.apache.log4j.Logger;
+import org.apache.log4j.PropertyConfigurator;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -29,6 +34,8 @@ public class CommonSteps {
 
 	ConfigFileReader configFileReader;
 	DbScanner dbManager;
+	
+	Logger log = Logger.getLogger("LOG");
 
 	static int summaryRowNumber = 0;
 
@@ -58,6 +65,7 @@ public class CommonSteps {
 			workbook.close();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
+			log.error(e.getMessage(), e);
 			e.printStackTrace();
 		}
 	}
@@ -114,80 +122,49 @@ public class CommonSteps {
 					outputStream.close();
 
 				} catch (Exception e) {
+					log.error(e.getMessage(), e);
 					e.printStackTrace();
 				}
 
 			}
 
 		} catch (Exception e1) {
+			log.error(e1.getMessage(), e1);
 			e1.printStackTrace();
 		}
 
 	}
 
-	public ArrayList<String> getTable(String schema) {
+	public ArrayList<String> getTable(String schema, String DBType) {
 		ArrayList<String> stableName = new ArrayList<String>();
 		try {
-			String schemaName = getSchemaName(schema);
+			//String schemaName = getSchemaName(schema);
 			String query = null;
-			String dbType = configFileReader.getDBType();
-			switch (dbType) {
+			//String dbType = DBName;
+			switch (DBType) {
 			case "POSTGRE":
-				query = "select tablename from pg_tables where schemaname = '" + schemaName + "'";
+				query = "select tablename from pg_tables where schemaname = '" + schema + "'";
 				break;
 			case "ORACLE":
 				query = "select table_name from user_tables";
 				break;
 			case "MYSQL":
-				query = "SELECT table_name FROM information_schema.tables where table_schema='" + schemaName + "'";
+				query = "SELECT table_name FROM information_schema.tables where table_schema='" + schema + "'";
 			}
-			if (dbType.equals("MYSQL"))
-				stableName = dbManager.getTableValue(schema, query, "table_name");
-			else if (dbType.equals("ORACLE")) {
-				stableName = dbManager.getTableValue(schema, query, "table_name");
+			if (DBType.equals("MYSQL"))
+				stableName = dbManager.getTableValue(schema, query, "table_name",DBType);
+			else if (DBType.equals("ORACLE")) {
+				stableName = dbManager.getTableValue(schema, query, "table_name",DBType);
 			} else {
-				stableName = dbManager.getTableValue(schema, query, "tablename");
+				stableName = dbManager.getTableValue(schema, query, "tablename",DBType);
 			}
 			saveQuery=query;
 
 		} catch (Exception e) {
+			log.error(e.getMessage(), e);
 			e.printStackTrace();
 		}
 		return stableName;
-	}
-
-	public String getSchemaName(String schema) {
-		String upperSchema = schema.toUpperCase();
-		String schemaName = null;
-		switch (upperSchema) {
-		case "CARD":
-			schemaName = configFileReader.getCardUserName();
-			break;
-		case "ISWITCH":
-			schemaName = configFileReader.getSwtUserName();
-			break;
-		case "BKN":
-			schemaName = configFileReader.getBknUserName();
-			break;
-		case "ALERT":
-			schemaName = configFileReader.getAltUserName();
-			break;
-		case "REPORT":
-			schemaName = configFileReader.getReportUserName();
-			break;
-		case "IPG":
-			schemaName = configFileReader.getIpgUserName();
-			break;
-		case "USR":
-			schemaName = configFileReader.getUsrName();
-			break;
-		case "BNK":
-			schemaName = configFileReader.getBnkUserName();
-			break;
-		default:
-			schemaName = configFileReader.getDefaultSchema();
-		}
-		return schemaName;
 	}
 
 	public void savePlainCardNumberToExcel(String schema) {
@@ -648,6 +625,7 @@ public class CommonSteps {
 
 			}
 		} catch (Exception e) {
+			log.error(e.getMessage(), e);
 			e.printStackTrace();
 		} finally {
 			dbManager.masterCard.clear();
@@ -661,7 +639,7 @@ public class CommonSteps {
 	}
 
 	public void sendMail(ArrayList<String> attribute, ArrayList<String> report) {
-		String fromEmailUserName = configFileReader.getLoginEmailUserName();
+		final String fromEmailUserName = configFileReader.getLoginEmailUserName();
 		final String password = configFileReader.getLoginEmailPassword();
 
 		Properties props = new Properties();
@@ -701,8 +679,10 @@ public class CommonSteps {
 			Transport.send(message);
 
 		} catch (MessagingException e) {
+			log.error(e.getMessage(), e);
 			e.printStackTrace();
 		} catch (Exception e1) {
+			log.error(e1.getMessage(), e1);
 			e1.printStackTrace();
 		}
 	}
@@ -762,6 +742,32 @@ public class CommonSteps {
 		}
 
 		updateExcel(b, "PLAINCARDNUMBER", schema);
+		
+		a1 = new ArrayList<>();
+		a1.add("Scaned failed tables");
+		a1.add("Scaned failed coloumns");
+		existRowValue++;
+		a1.add(Integer.toString(existRowValue++));
+		a1.add("0");
+		
+		b = new ArrayList<>();
+		b.add(a1);
+		updateExcel(b, "PLAINCARDNUMBER", schema);
+		
+		
+		b = new ArrayList<>();
+		
+		for(int k=0;k<dbManager.failedTable.size();k++){
+			a1 = new ArrayList<>();
+			a1.add(dbManager.failedTable.get(k).get(0));
+			a1.add(dbManager.failedTable.get(k).get(1));
+			a1.add(Integer.toString(existRowValue++));
+			a1.add("0");
+			b.add(a1);
+		}
+		
+		updateExcel(b, "PLAINCARDNUMBER", schema);
+		
 	}
 
 	public void updateDetailsSheettotrc2(String schema) {
@@ -814,6 +820,30 @@ public class CommonSteps {
 
 			b.add(a1);
 		}
+		updateExcel(b, "TRACK2", schema);
+		
+		a1 = new ArrayList<>();
+		a1.add("Scaned failed tables");
+		a1.add("Scaned failed coloumns");
+		existRowValue++;
+		a1.add(Integer.toString(existRowValue++));
+		a1.add("0");
+		
+		b = new ArrayList<>();
+		b.add(a1);
+		updateExcel(b, "TRACK2", schema);
+		
+		b = new ArrayList<>();
+		
+		for(int k=0;k<dbManager.failedTable.size();k++){
+			a1 = new ArrayList<>();
+			a1.add(dbManager.failedTable.get(k).get(0));
+			a1.add(dbManager.failedTable.get(k).get(1));
+			a1.add(Integer.toString(existRowValue++));
+			a1.add("0");
+			b.add(a1);
+		}
+		
 		updateExcel(b, "TRACK2", schema);
 	}
 
@@ -907,6 +937,7 @@ public class CommonSteps {
 				}
 
 			} catch (Exception e) {
+				log.error(e.getMessage(), e);
 				e.printStackTrace();
 			} finally {
 				dbManager.track2Value.clear();
@@ -932,6 +963,7 @@ public class CommonSteps {
 			}
 
 		} catch (Exception e) {
+			log.error(e.getMessage(), e);
 			e.printStackTrace();
 		}
 
@@ -975,7 +1007,11 @@ public class CommonSteps {
 		dbManager.removeFile = new ArrayList<String>();
 		dbManager.track2Count = 0;
 		dbManager.scanColCount = 0;
-
+		dbManager.failedTable=new ArrayList<ArrayList<String>>();
 	}
+	
+	 public void startPropertyFile() {
+		   PropertyConfigurator.configure("config/Configuration.properties");
+	    }
 
 }

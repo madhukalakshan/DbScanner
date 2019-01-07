@@ -15,6 +15,7 @@ import java.util.regex.Pattern;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.log4j.Logger;
 import org.postgresql.util.PSQLException;
 
 public class DbScanner {
@@ -30,10 +31,12 @@ public class DbScanner {
 	public static ArrayList<String> saveValue = new ArrayList<String>();
 	public static ArrayList<ArrayList<String>> lengthSixteenValue = new ArrayList<ArrayList<String>>();
 	public static ArrayList<ArrayList<String>> track2Value = new ArrayList<ArrayList<String>>();
+	public static ArrayList<ArrayList<String>> failedTable = new ArrayList<ArrayList<String>>();
 
 	public static ArrayList<ArrayList<String>> cardNumberExisttableName = new ArrayList<ArrayList<String>>();
 	public static ArrayList<String> cardNumberNotExisttableName = new ArrayList<String>();
 	public static ArrayList<String> allTableName = new ArrayList<String>();
+	public static ArrayList<String> failedTableOnly = new ArrayList<String>();
 
 	public static ArrayList<ArrayList<String>> track2ExisttableName = new ArrayList<ArrayList<String>>();
 	public static ArrayList<String> track2NotExisttableName = new ArrayList<String>();
@@ -52,80 +55,76 @@ public class DbScanner {
 
 	public static long track2Count = 0;
 
+	static String userNameValue = "";
+	static String passwordValue = "";
+	static String ipValue = "";
+	static String portValue = "";
+	static String dbNameValue = "";
+
+	public static boolean allColoumnScan = true;
+
+	Logger log = Logger.getLogger("LOG");
+
 	public DbScanner() {
 		configFileReader = new ConfigFileReader();
 	}
 
-	public Connection createDB(String alias) {
-		String DBType = configFileReader.getDBType();
+	public void updateUsrPass(String userName, String password) {
+		userNameValue = userName;
+		passwordValue = password;
+	}
+
+	public void updateIP(String ip, String port, String dbName) {
+		ipValue = ip;
+		portValue = port;
+		dbNameValue = dbName;
+	}
+
+	public Connection createDB(String alias, String DBType) {
 		int i = 0;
 		boolean isConnectSuccess = false;
-		String upperAlias = alias.toUpperCase();
+		// String upperAlias = alias.toUpperCase();
+		String ip = "";
 		while (i < 2) {
 			try {
 				switch (DBType) {
 				case "ORACLE":
 					Class.forName("oracle.jdbc.driver.OracleDriver");
+					ip = "jdbc:oracle:thin:@" + ipValue + ":" + portValue + ":" + dbNameValue;
 					break;
 				case "POSTGRE":
 					Class.forName("org.postgresql.Driver");
+					ip = "jdbc:postgresql://" + ipValue + ":" + portValue + "/" + dbNameValue;
 					break;
 				case "DB2":
 					Class.forName("com.ibm.db2.jcc.DB2Driver");
+					ip = "jdbc:db2://" + ipValue + ":" + portValue + "/" + dbNameValue;
+
 					break;
 				case "MYSQL":
 					Class.forName("com.mysql.jdbc.Driver");
+					ip = "jdbc:mysql://" + ipValue + ":" + portValue + "/" + dbNameValue;
 					break;
+
 				}
-				switch (upperAlias) {
-				case "ISWITCH":
-					con = DriverManager.getConnection(configFileReader.getIP(), configFileReader.getSwtUserName(),
-							configFileReader.getSwtPassword());
-					break;
-				case "BKN":
-					con = DriverManager.getConnection(configFileReader.getIP(), configFileReader.getBknUserName(),
-							configFileReader.getBknPassword());
-					break;
-				case "REPORT":
-					con = DriverManager.getConnection(configFileReader.getIP(), configFileReader.getReportUserName(),
-							configFileReader.getReportPassword());
-					break;
-				case "IPG":
-					con = DriverManager.getConnection(configFileReader.getIP(), configFileReader.getIpgUserName(),
-							configFileReader.getIpgPassword());
-					break;
-				case "USR":
-					con = DriverManager.getConnection(configFileReader.getIP(), configFileReader.getUsrName(),
-							configFileReader.getUsrPassword());
-					break;
-				case "BNK":
-					con = DriverManager.getConnection(configFileReader.getIP(), configFileReader.getBnkUserName(),
-							configFileReader.getBnkPassword());
-					break;
-				case "CARD":
-					con = DriverManager.getConnection(configFileReader.getIP(), configFileReader.getCardUserName(),
-							configFileReader.getCardPassword());
-					break;
-				case "ALERT":
-					con = DriverManager.getConnection(configFileReader.getIP(), configFileReader.getAltUserName(),
-							configFileReader.getAltPassword());
-					break;
-				default:
-					con = DriverManager.getConnection(configFileReader.getIP(), configFileReader.getDefaultUserName(),
-							configFileReader.getDefaultPassword());
-				}
+
+				con = DriverManager.getConnection(ip, userNameValue, passwordValue);
+
 				i = i + 2;
 				isConnectSuccess = true;
 
 			} catch (PSQLException e) {
 				isConnectSuccess = false;
+				log.error(e.getMessage(), e);
 				e.printStackTrace();
 				i++;
 			} catch (SQLException e1) {
 				isConnectSuccess = false;
+				log.error(e1.getMessage(), e1);
 				e1.printStackTrace();
 				i++;
 			} catch (Exception e2) {
+				log.error(e2.getMessage(), e2);
 				isConnectSuccess = false;
 				e2.printStackTrace();
 				i = i + 2;
@@ -137,7 +136,7 @@ public class DbScanner {
 		return con;
 	}
 
-	public boolean verfyDb(String alias, String query, String rowCount) {
+	public boolean verfyDb(String alias, String query, String rowCount, String DBType) {
 
 		int count = 0;
 		boolean isSuccess = false;
@@ -145,7 +144,7 @@ public class DbScanner {
 		ResultSet rs = null;
 
 		if (con == null) {
-			con = createDB(alias);
+			con = createDB(alias, DBType);
 		}
 
 		try {
@@ -155,22 +154,27 @@ public class DbScanner {
 				count = rs.getInt(1);
 			}
 		} catch (PSQLException e) {
+			log.error(e.getMessage(), e);
 			e.printStackTrace();
 		} catch (SQLException e1) {
+			log.error(e1.getMessage(), e1);
 			e1.printStackTrace();
 		} catch (Exception e2) {
+			log.error(e2.getMessage(), e2);
 			e2.printStackTrace();
 		} finally {
 			if (stmt != null)
 				try {
 					stmt.close();
 				} catch (Exception e) {
+					log.error(e.getMessage(), e);
 					e.printStackTrace();
 				}
 			if (rs != null)
 				try {
 					rs.close();
 				} catch (Exception e) {
+					log.error(e.getMessage(), e);
 					e.printStackTrace();
 				}
 		}
@@ -178,12 +182,12 @@ public class DbScanner {
 		return isSuccess;
 	}
 
-	public ArrayList<String> getTableValue(String alias, String query, String ColumnName) {
+	public ArrayList<String> getTableValue(String alias, String query, String ColumnName, String DBType) {
 		Statement stmt = null;
 		ResultSet rs = null;
 
 		if (con == null) {
-			con = createDB(alias);
+			con = createDB(alias, DBType);
 		}
 
 		try {
@@ -198,22 +202,28 @@ public class DbScanner {
 				}
 			}
 		} catch (PSQLException e) {
+			log.error(e.getMessage(), e);
 			e.printStackTrace();
 		} catch (SQLException e1) {
+			log.error(e1.getMessage(), e1);
 			e1.printStackTrace();
 		} catch (Exception e2) {
+			log.error(e2.getMessage(), e2);
+			;
 			e2.printStackTrace();
 		} finally {
 			if (stmt != null)
 				try {
 					stmt.close();
 				} catch (Exception e) {
+					log.error(e.getMessage(), e);
 					e.printStackTrace();
 				}
 			if (rs != null)
 				try {
 					rs.close();
 				} catch (Exception e) {
+					log.error(e.getMessage(), e);
 					e.printStackTrace();
 				}
 		}
@@ -221,13 +231,15 @@ public class DbScanner {
 		return saveValue;
 	}
 
-	public ArrayList<String> getDbValue(String alias, String query, String ColumnName) {
+	public ArrayList<String> getDbValue(String alias, String query, String ColumnName, String DBType, String tblName) {
 		Statement stmt = null;
 		ResultSet rs = null;
 
 		if (con == null) {
-			con = createDB(alias);
+			con = createDB(alias, DBType);
 		}
+
+		ArrayList<String> tmpFailedTable = new ArrayList<String>();
 
 		try {
 			stmt = con.createStatement();
@@ -239,22 +251,38 @@ public class DbScanner {
 				}
 			}
 		} catch (PSQLException e) {
+			tmpFailedTable.add(tblName);
+			tmpFailedTable.add("ALL");
+			if (!failedTable.contains(tmpFailedTable)) {
+				failedTable.add(tmpFailedTable);
+			}
+			log.error(e.getMessage(), e);
 			e.printStackTrace();
 		} catch (SQLException e1) {
+			tmpFailedTable.add(tblName);
+			tmpFailedTable.add("ALL");
+			if (!failedTable.contains(tmpFailedTable)) {
+				failedTable.add(tmpFailedTable);
+			}
+			log.debug("Query is - "+query);
+			log.error(e1.getMessage(), e1);
 			e1.printStackTrace();
 		} catch (Exception e2) {
+			log.error(e2.getMessage(), e2);
 			e2.printStackTrace();
 		} finally {
 			if (stmt != null)
 				try {
 					stmt.close();
 				} catch (Exception e) {
+					log.error(e.getMessage(), e);
 					e.printStackTrace();
 				}
 			if (rs != null)
 				try {
 					rs.close();
 				} catch (Exception e) {
+					log.error(e.getMessage(), e);
 					e.printStackTrace();
 				}
 		}
@@ -262,13 +290,16 @@ public class DbScanner {
 		return saveValue;
 	}
 
-	public void isValidationValue(String alias, String query, String ColumnName, String table, int indexNumber) {
+	public void isValidationValue(String alias, String query, String ColumnName, String table, int indexNumber,
+			String DBType) throws SQLException {
 		Statement stmt = null;
 		ResultSet rs = null;
 
 		if (con == null) {
-			con = createDB(alias);
+			con = createDB(alias, DBType);
 		}
+
+		ArrayList<String> tmpFailedTable = new ArrayList<String>();
 
 		try {
 
@@ -277,16 +308,34 @@ public class DbScanner {
 			while (rs.next()) {
 				indexNumber++;
 				scanColCount++;
-				if (!(rs.getString(ColumnName) == null || rs.getString(ColumnName).equals(" "))) {
-					extractvalues(rs.getString(ColumnName), ColumnName, table, indexNumber);
+				try {
+					if (!(rs.getString(ColumnName) == null || rs.getString(ColumnName).equals(" "))) {
+						extractvalues(rs.getString(ColumnName), ColumnName, table, indexNumber);
+					}
+				} catch (SQLException e) {
 				}
 			}
 
 		} catch (PSQLException e1) {
+			allColoumnScan = false;
+			tmpFailedTable.add(table);
+			tmpFailedTable.add(ColumnName);
+			if (!failedTable.contains(tmpFailedTable)) {
+				failedTable.add(tmpFailedTable);
+			}
+			log.error(e1.getMessage(), e1);
 			e1.printStackTrace();
 		} catch (SQLException e2) {
+			allColoumnScan = false;
+			tmpFailedTable.add(table);
+			tmpFailedTable.add(ColumnName);
+			if (!failedTable.contains(tmpFailedTable)) {
+				failedTable.add(tmpFailedTable);
+			}
+			log.error(e2.getMessage(), e2);
 			e2.printStackTrace();
 		} catch (Exception e3) {
+			log.error(e3.getMessage(), e3);
 			e3.printStackTrace();
 		} finally {
 			if (stmt != null)
@@ -310,18 +359,21 @@ public class DbScanner {
 			try {
 				con.close();
 			} catch (Exception e) {
+				log.error(e.getMessage(), e);
 				e.printStackTrace();
 			}
 		if (stmt != null)
 			try {
 				stmt.close();
 			} catch (Exception e) {
+				log.error(e.getMessage(), e);
 				e.printStackTrace();
 			}
 		if (rs != null)
 			try {
 				rs.close();
 			} catch (Exception e) {
+				log.error(e.getMessage(), e);
 				e.printStackTrace();
 			}
 	}
@@ -392,7 +444,7 @@ public class DbScanner {
 		}
 	}
 
-	public static void isCardNumber() {
+	public void isCardNumber() {
 
 		try {
 
@@ -478,6 +530,7 @@ public class DbScanner {
 			}
 
 		} catch (Exception e) {
+			log.error(e.getMessage(), e);
 			e.printStackTrace();
 		}
 	}
@@ -510,9 +563,9 @@ public class DbScanner {
 		return countArray;
 	}
 
-	public String limitQuery(String table, String coloumn, int limitValue, String constant) {
+	public String limitQuery(String table, String coloumn, int limitValue, String constant, String DBType) {
 		String query = "";
-		String dbTyp = configFileReader.getDBType();
+		String dbTyp = DBType;
 		if (constant == "a") {
 			switch (dbTyp) {
 			case "ORACLE":
@@ -561,7 +614,8 @@ public class DbScanner {
 		}
 
 		for (int i = 0; i < allTableName.size(); i++) {
-			if (!cardNumberOnlyExisttableName.contains(allTableName.get(i))) {
+			if (!cardNumberOnlyExisttableName.contains(allTableName.get(i))
+					&& !failedTableOnly.contains(allTableName.get(i))) {
 				cardNumberNotExisttableName.add(allTableName.get(i));
 			}
 		}
@@ -569,6 +623,7 @@ public class DbScanner {
 	}
 
 	public void updateTrc2NotExisttableName() {
+
 		ArrayList<String> track2OnlyExisttableName = new ArrayList<String>();
 
 		for (int j = 0; j < track2ExisttableName.size(); j++) {
@@ -582,7 +637,8 @@ public class DbScanner {
 		}
 
 		for (int i = 0; i < allTableName.size(); i++) {
-			if (!track2OnlyExisttableName.contains(allTableName.get(i))) {
+			if (!track2OnlyExisttableName.contains(allTableName.get(i))
+					&& !failedTableOnly.contains(allTableName.get(i))) {
 				track2NotExisttableName.add(allTableName.get(i));
 			}
 		}
@@ -601,9 +657,24 @@ public class DbScanner {
 			}
 
 		} catch (Exception e) {
+			log.error(e.getMessage(), e);
 			e.printStackTrace();
 		}
+	}
 
+	public void updatefailedTableOnly() {
+		try {
+			ArrayList<String> tmpCrdNumExisttblName = new ArrayList<String>();
+			for (int i = 0; i < failedTable.size(); i++) {
+				if (!failedTableOnly.contains(failedTable.get(i).get(0))) {
+					failedTableOnly.add(failedTable.get(i).get(0));
+				}
+			}
+
+		} catch (Exception e) {
+			log.error(e.getMessage(), e);
+			e.printStackTrace();
+		}
 	}
 
 	public void updatetrack2ExisttableName() {
@@ -628,41 +699,6 @@ public class DbScanner {
 
 			}
 		}
-	}
-
-	public String getLoginUserName(String alias) {
-		String userName = "";
-		String upperAlias = alias.toUpperCase();
-
-		switch (upperAlias) {
-		case "ISWITCH":
-			userName = configFileReader.getSwtUserName();
-			break;
-		case "BKN":
-			userName = configFileReader.getBknUserName();
-			break;
-		case "REPORT":
-			userName = configFileReader.getReportUserName();
-			break;
-		case "ALERT":
-			userName = configFileReader.getAltUserName();
-			break;
-		case "IPG":
-			userName = configFileReader.getIpgUserName();
-			break;
-		case "USR":
-			userName = configFileReader.getUsrName();
-			break;
-		case "BNK":
-			userName = configFileReader.getBnkUserName();
-			break;
-		case "CARD":
-			userName = configFileReader.getCardUserName();
-			break;
-		default:
-			userName = configFileReader.getDefaultUserName();
-		}
-		return userName;
 	}
 
 	public int plcrdpageCount() {

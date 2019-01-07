@@ -1,0 +1,1 @@
+java -Xms512M -Xmx3072M -jar DbScanner-1-1.jar
